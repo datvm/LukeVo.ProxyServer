@@ -65,23 +65,42 @@ namespace LukeVo.ProxyServer
 
             app.RunProxy(context =>
             {
-                var request = context.Request;
-
-                var forwardTarget = settings.Proxy
-                        .FirstOrDefault(q => q.FromUri.Any(p => p.IsSameOrigin(request)));
-
-                if (forwardTarget != null)
+                return Task.Run(async () =>
                 {
-                    var message = context
-                        .ForwardTo(forwardTarget.To)
-                        .Send();
+                    var request = context.Request;
 
-                    return message;
-                }
-                else
-                {
-                    return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
-                }
+                    var forwardTarget = settings.Proxy
+                            .FirstOrDefault(q => q.FromUri.Any(p => p.IsSameOrigin(request)));
+
+                    if (forwardTarget != null)
+                    {
+                        var message = await context
+                            .ForwardTo(forwardTarget.To)
+                            .Send();
+
+                        // Update location if there is redirect
+                        var locationHeader = message.Headers.FirstOrDefault(q => q.Key == "Location");
+                        if (locationHeader.Value != null && locationHeader.Value.Any())
+                        {
+                            var locationUri = new Uri(locationHeader.Value.First());
+
+                            if (locationUri.IsAbsoluteUri)
+                            {
+                                var replacingUri = $"{request.Scheme}://{request.Host.ToString()}{locationUri.PathAndQuery}";
+
+                                message.Headers.Remove("Location");
+                                message.Headers.Add("Location", replacingUri);
+                            }
+                        }
+
+                        return message;
+                    }
+                    else
+                    {
+                        return new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+                    }
+                });
+
             });
         }
     }
