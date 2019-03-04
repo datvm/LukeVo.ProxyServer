@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading.Tasks;
 using LukeVo.ProxyServer.Models;
 using Microsoft.AspNetCore.Builder;
@@ -51,6 +53,7 @@ namespace LukeVo.ProxyServer
                 app.UseHsts();
             }
 
+            app.UseHttpsRedirection();
 
             // Pre-parse URI for faster performance
             foreach (var proxy in settings.Proxy)
@@ -59,23 +62,27 @@ namespace LukeVo.ProxyServer
                     .Select(q => new Uri(q))
                     .ToList();
             }
-            
+
             app.RunProxy(context =>
             {
                 var request = context.Request;
 
                 var forwardTarget = settings.Proxy
-                    .FirstOrDefault(q => q.FromUri.Any(p => p.IsSameOrigin(request)));
+                        .FirstOrDefault(q => q.FromUri.Any(p => p.IsSameOrigin(request)));
 
-                var message = context
-                    .ForwardTo(forwardTarget.To)
-                    .Send();
+                if (forwardTarget != null)
+                {
+                    var message = context
+                        .ForwardTo(forwardTarget.To)
+                        .Send();
 
-                return message;
+                    return message;
+                }
+                else
+                {
+                    return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+                }
             });
-
-            app.UseHttpsRedirection();
-            app.UseMvc();
         }
     }
 }
